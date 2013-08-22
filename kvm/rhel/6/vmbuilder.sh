@@ -35,6 +35,8 @@
 #                      Size (in MB) of the swap partition [default: 1024]. Discarded when --part is used.
 #
 #   Network related options:
+#       --hostname=HOSTNAME
+#              The vm's network hostname.
 #       --ip=ADDRESS
 #              IP address in dotted form [default: dhcp]
 #
