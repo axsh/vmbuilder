@@ -14,19 +14,18 @@
 ## public functions
 
 function setUp() {
-  mkdir -p ${chroot_dir}
+  mkdir -p ${chroot_dir}/dev
 
   function checkroot() { :; }
-  function umount() { :; }
-  function after_umount_nonroot() { :; }
+  function mount() { :; }
 }
 
 function tearDown() {
   rm -rf ${chroot_dir}
 }
 
-function test_umount_nonroot() {
-  umount_nonroot ${chroot_dir}
+function test_after_umount_nonroot() {
+  after_umount_nonroot ${chroot_dir} >/dev/null
   assertEquals $? 0
 }
 

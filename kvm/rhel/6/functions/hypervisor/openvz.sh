@@ -26,6 +26,108 @@ function configure_hypervisor() {
   configure_container ${chroot_dir}
 }
 
+function after_umount_nonroot() {
+  local chroot_dir=$1
+  [[ -d "${chroot_dir}" ]] || { echo "[ERROR] directory not found: ${chroot_dir} (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+  checkroot || return 1
+
+  # http://www.powerpbx.org/content/are-you-sure-you-want-revert-revision-sat-12102011-1203
+
+  local dev_path
+
+  while read name mode type major minor; do
+    for dev_path in dev etc/udev/devices; do
+      [[ -d ${chroot_dir}/${dev_path} ]] || mkdir -p  ${chroot_dir}/${dev_path}
+      [[ -a ${chroot_dir}/${dev_path}/${name} ]] || {
+        mknod -m ${mode} ${chroot_dir}/${dev_path}/${name} ${type} ${major} ${minor}
+      }
+    done
+  done < <(cat <<-EOS | egrep -v '^#|^$'
+	# common
+	null    666 c 1 3
+	zero    666 c 1 5
+	tty1    620 c 4 1
+	tty2    620 c 4 2
+	tty3    620 c 4 3
+	tty4    620 c 4 4
+	console 600 c 5 1
+	# container
+	full    666 c 1 7
+	random  666 c 1 8
+	urandom 666 c 1 9
+	ptmx    666 c 5 2
+	# openvz
+	ram0 640 b 1  0
+	mem  640 c 1  1
+	kmem 600 c 1  2
+	port 640 c 1  4
+	core 600 c 1  6
+	kmsg 600 c 1 11
+	# pty
+	ptyp0 666 c 2 0
+	ptyp1 666 c 2 1
+	ptyp2 666 c 2 2
+	ptyp3 666 c 2 3
+	ptyp4 666 c 2 4
+	ptyp5 666 c 2 5
+	ptyp6 666 c 2 6
+	ptyp7 666 c 2 7
+	ptya0 666 c 2 176
+	ptya1 666 c 2 177
+	ptya2 666 c 2 178
+	ptya3 666 c 2 179
+	ptya4 666 c 2 180
+	ptya5 666 c 2 181
+	ptya6 666 c 2 182
+	ptya7 666 c 2 183
+	ptya8 666 c 2 184
+	ptya9 666 c 2 185
+	ptyaa 666 c 2 186
+	ptyab 666 c 2 187
+	ptyac 666 c 2 188
+	ptyad 666 c 2 189
+	ptyae 666 c 2 190
+	ptyaf 666 c 2 181
+	# tty
+	ttyp0 666 c 3 0
+	ttyp1 666 c 3 1
+	ttyp2 666 c 3 2
+	ttyp3 666 c 3 3
+	ttyp4 666 c 3 4
+	ttyp5 666 c 3 5
+	ttyp6 666 c 3 6
+	ttyp7 666 c 3 7
+	ttya0 666 c 3 176
+	ttya1 666 c 3 177
+	ttya2 666 c 3 178
+	ttya3 666 c 3 179
+	ttya4 666 c 3 180
+	ttya5 666 c 3 181
+	ttya6 666 c 3 182
+	ttya7 666 c 3 183
+	ttya8 666 c 3 184
+	ttya9 666 c 3 185
+	ttyaa 666 c 3 186
+	ttyab 666 c 3 187
+	ttyac 666 c 3 188
+	ttyad 666 c 3 189
+	ttyae 666 c 3 190
+	ttyaf 666 c 3 191
+	EOS
+	# loop
+	for i in {0..127}; do
+	  echo loop${i} 600 b 7 ${i}
+	done
+	)
+
+  for dev_path in dev etc/udev/devices; do
+    ln -s /proc/self/fd   ${chroot_dir}/${dev_path}/fd
+    ln -s /proc/self/fd/0 ${chroot_dir}/${dev_path}/stdin
+    ln -s /proc/self/fd/1 ${chroot_dir}/${dev_path}/stdout
+    ln -s /proc/self/fd/2 ${chroot_dir}/${dev_path}/stderr
+  done
+}
+
 ##
 
 function next_ctid() {
