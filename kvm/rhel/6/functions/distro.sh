@@ -201,7 +201,7 @@ function build_chroot() {
   add_option_distro
   preflight_check_distro
 
-  local chroot_dir=${1:-$(pwd)/${distro_name}-${distro_ver}_${distro_arch}}
+  local chroot_dir=${1:-${PWD}/${distro_name}-${distro_ver}_${distro_arch}}
   [[ -d "${chroot_dir}" ]] && { echo "[ERROR] ${chroot_dir} already exists (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; } || :
 
   distroinfo
@@ -1654,7 +1654,9 @@ function run_copy() {
   [[ -n "${copy}" ]] || return 0
   [[ -f "${copy}" ]] || { echo "[ERROR] The path to the copy directive is invalid: ${copy}. Make sure you are providing a full path. (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
 
+  (
   printf "[INFO] Copying files specified by copy in: %s\n" ${copy}
+  cd ${copy%/*}
   while read line; do
     set ${line}
     [[ $# -ge 2 ]] || continue
@@ -1677,7 +1679,8 @@ function run_copy() {
       [[ -n "${mode}" ]] || mode=$(stat -c %a ${srcpath})
       install --mode ${mode} --owner ${owner:-root} --group ${group:-root} ${srcpath} ${dstpath}
     )
-  done < <(egrep -v '^$|^#' ${copy})
+  done < <(egrep -v '^$|^#' ${copy##*/})
+  )
 }
 
 function xsync_dir() {
