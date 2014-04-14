@@ -40,6 +40,9 @@ function add_option_distro() {
 
   local driver_name="${distro_name}$(get_distro_major_ver ${distro_ver})"
   case "${driver_name}" in
+  rhel7)
+    load_distro_driver ${driver_name}
+    ;;
   rhel6|centos6|sl6)
     load_distro_driver ${driver_name}
     ;;
@@ -1082,10 +1085,16 @@ function install_bootloader() {
     } || {
       target_device="$(lsdevmap ${disk_filename} | devmap2lodev)"
     }
-    grub_cmd="grub2-setup ${target_device}"
+    # got errors on RHEL7
+    #grub_cmd="grub2-bios-setup ${target_device}"
+    # => grub2-bios-setup: error: cannot stat `/boot/grub2/boot.img': No such file or directory.
+    #grub_cmd="grub2-bios-setup --boot-image=/boot/grub2/i386-pc/boot.img --core-image=/boot/grub2/i386-pc/core.img ${target_device}"
+    # => grub2-bios-setup: error: cannot stat `/boot/grub2//boot/grub2/i386-pc/boot.img': No such file or directory.
+    grub_cmd="grub2-bios-setup --boot-image=i386-pc/boot.img --core-image=i386-pc/core.img ${target_device}"
 
     install_grub2 ${chroot_dir}
     run_in_target ${chroot_dir} grub2-install ${target_device}
+    # => Installation finished. No error reported.
     ;;
   esac
 
@@ -1356,15 +1365,21 @@ function configure_serial_console() {
   [[ -d "${chroot_dir}" ]] || { echo "[ERROR] directory not found: ${chroot_dir} (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
 
   printf "[INFO] Configuring console\n"
-  [[ -f ${chroot_dir}/etc/sysconfig/init ]] && {
-    sed -i "s,^ACTIVE_CONSOLES=.*,ACTIVE_CONSOLES=\"/dev/tty[1-6] /dev/ttyS0\"", ${chroot_dir}/etc/sysconfig/init
-  } || :
 
-  # rhel5
   (
     eval "$(detect_distro ${chroot_dir})"
     case "${DISTRIB_RELEASE}" in
-    5.*) echo "S0:2345:respawn:/sbin/agetty ttyS0 115200 linux" >> ${chroot_dir}/etc/inittab ;;
+    5.*)
+      echo "S0:2345:respawn:/sbin/agetty ttyS0 115200 linux" >> ${chroot_dir}/etc/inittab
+      ;;
+    6.*)
+      [[ -f ${chroot_dir}/etc/sysconfig/init ]] && {
+        sed -i "s,^ACTIVE_CONSOLES=.*,ACTIVE_CONSOLES=\"/dev/tty[1-6] /dev/ttyS0\"", ${chroot_dir}/etc/sysconfig/init
+      } || :
+      ;;
+    7.*)
+      ln -s /usr/lib/systemd/system/getty@.service ${chroot_dir}/etc/systemd/system/getty.target.wants/getty@ttyS0.service
+      ;;
     esac
   )
 
@@ -1426,12 +1441,12 @@ function install_interface() {
 
   {
     render_interface_${iftype} ${ifname}
-    render_interface_netowrk_configuration
+    render_interface_network_configuration
   } | egrep -v '^$' > ${chroot_dir}/${ifcfg_path}
   cat ${chroot_dir}/${ifcfg_path}
 }
 
-function render_interface_netowrk_configuration() {
+function render_interface_network_configuration() {
   [[ -z "${ip}" ]] && {
     local bootproto
 
@@ -1599,6 +1614,7 @@ function detect_distro() {
   # CentOS release 5.6 (Final)
   # CentOS Linux release 6.0 (Final)
   # Red Hat Enterprise Linux Server release 6.0 (Santiago)
+  # Red Hat Enterprise Linux Everything release 7.0 Beta (Maipo)
   # Scientific Linux release 6.0 (Carbon)
 
   local DISTRIB_ID=
@@ -1645,9 +1661,9 @@ function detect_distro() {
   fi
 
   cat <<-EOS
-	DISTRIB_FLAVOR=${DISTRIB_FLAVOR}
-	DISTRIB_ID=${DISTRIB_ID}
-	DISTRIB_RELEASE=${DISTRIB_RELEASE}
+	DISTRIB_FLAVOR="${DISTRIB_FLAVOR}"
+	DISTRIB_ID="${DISTRIB_ID}"
+	DISTRIB_RELEASE="${DISTRIB_RELEASE}"
 	EOS
 }
 
