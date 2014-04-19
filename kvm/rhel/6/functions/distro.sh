@@ -75,6 +75,8 @@ function add_option_distro() {
   dns=${dns:-}
   mac=${mac:-}
   hw=${hw:-}
+  physdev=${physdev:-}
+  onboot=${onboot:-}
   hostname=${hostname:-}
 
   # settings for the initial user
@@ -448,19 +450,16 @@ function clean_packages() {
   local chroot_dir=$1
   [[ -d "${chroot_dir}" ]] || { echo "[ERROR] directory not found: ${chroot_dir} (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
 
-  case "${keepcache}" in
-  1) ;;
-  *) keepcache=0 ;;
-  esac
+  # make sure to rebuild rpmdb in target.
+  # bacause most package is installed via host yum command.
+  run_in_target ${chroot_dir} rpm -vv --rebuilddb
 
-  case "${keepcache}" in
-  0)
-    run_yum       ${chroot_dir} clean packages
-    run_in_target ${chroot_dir} yum clean packages
-    ;;
-  *)
-    ;;
-  esac
+  # # yum clean packages
+  # > Loaded plugins: product-id, subscription-manager
+  # > This system is not registered to Red Hat Subscription Management. You can use subscription-manager to register.
+  # > There are no enabled repos.
+  # > Run "yum repolist all" to see the repos you have.
+  # > You can enable repos with yum-config-manager --enable <repo>
 }
 
 ## other system configuration
@@ -1362,6 +1361,24 @@ function config_host_and_domainname() {
   }
 }
 
+function configure_vlan_conf() {
+  local chroot_dir=${1}
+  [[ -d "${chroot_dir}" ]] || { echo "[ERROR] directory not found: ${chroot_dir} (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
+
+  local line=
+
+  # TODO: enable to select "VLAN_NAME_TYPE"
+  while read line; do
+    egrep -w "^${line}" ${chroot_dir}/etc/sysconfig/network -q || {
+      echo "${line}" >> ${chroot_dir}/etc/sysconfig/network
+    }
+  done < <(cat <<-EOS
+	VLAN=yes
+	VLAN_NAME_TYPE=VLAN_PLUS_VID_NO_PAD
+	EOS
+  )
+}
+
 function configure_serial_console() {
   local chroot_dir=$1
   [[ -d "${chroot_dir}" ]] || { echo "[ERROR] directory not found: ${chroot_dir} (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
@@ -1392,14 +1409,14 @@ function configure_serial_console() {
 
 function nictabinfo() {
   {
-    [[ -n "${nictab}" && -f "${nictab}" ]] && {
+    if [[ -n "${nictab}" && -f "${nictab}" ]]; then
       cat ${nictab}
-    } || {
+    else
       # "echo ${dns}" means removing new-line(s).
       cat <<-EOS
-	ifname=eth0 ip=${ip} mask=${mask} net=${net} bcast=${bcast} gw=${gw} dns="$(echo ${dns})" mac=${mac} hw=${hw} onboot=${onboot} iftype=ethernet
+	ifname=eth0 ip=${ip} mask=${mask} net=${net} bcast=${bcast} gw=${gw} dns="$(echo ${dns})" mac=${mac} hw=${hw} physdev=${physdev} bootproto=${bootproto} onboot=${onboot} iftype=ethernet
 	EOS
-    }
+    fi
   } | egrep -v '^$|^#'
 }
 
@@ -1410,7 +1427,7 @@ function config_interfaces() {
   local line=
   while read line; do
     (
-      ifname= ip= mask= net= bcast= gw= dns= mac= hw= onboot= iftype=
+      ifname= ip= mask= net= bcast= gw= dns= mac= hw= physdev= bootproto= onboot= iftype=
       eval ${line}
       install_interface ${chroot_dir} ${ifname} ${iftype}
     )
@@ -1428,6 +1445,9 @@ function install_interface() {
   iftype=$(echo ${iftype} | tr A-Z a-z)
   case ${iftype} in
   ethernet|ovsport|ovsbridge)
+    ;;
+  vlan)
+    configure_vlan_conf ${chroot_dir}
     ;;
   bridge)
     run_yum ${chroot_dir} install bridge-utils
@@ -1449,19 +1469,17 @@ function install_interface() {
 }
 
 function render_interface_network_configuration() {
-  [[ -z "${ip}" ]] && {
-    local bootproto
+  if [[ -z "${ip}" ]]; then
+    bootproto=${bootproto:-dhcp}
 
-    [[ -z "${bridge}" ]] && {
-      bootproto=dhcp
-    } || {
+    if [[ -n "${bridge}" ]]; then
       bootproto=none
-    }
+    fi
 
     cat <<-EOS
 	BOOTPROTO=${bootproto}
 	EOS
-  } || {
+  else
     cat <<-EOS
 	BOOTPROTO=static
 	IPADDR=${ip}
@@ -1470,7 +1488,7 @@ function render_interface_network_configuration() {
 	$([[ -z "${bcast}"  ]] || echo "BROADCAST=${bcast}")
 	$([[ -z "${gw}"     ]] || echo "GATEWAY=${gw}")
 	EOS
-  }
+  fi
 
   local dnssv= i=1
   for dnssv in ${dns}; do
@@ -1504,6 +1522,16 @@ function render_interface_tap() {
 	DEVICE=${ifname}
 	TYPE=Tap
 	$([[ -z "${bridge}" ]] || echo "BRIDGE=${bridge}")
+	EOS
+}
+
+function render_interface_vlan() {
+  local ifname=${1:-vlan0}
+
+  cat <<-EOS
+	DEVICE=${ifname}
+	$([[ -z "${physdev}" ]] || echo "PHYSDEV=${physdev}")
+	$([[ -z "${bridge}"  ]] || echo "BRIDGE=${bridge}")
 	EOS
 }
 
