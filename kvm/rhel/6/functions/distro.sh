@@ -452,7 +452,7 @@ function clean_packages() {
 
   # make sure to rebuild rpmdb in target.
   # bacause most package is installed via host yum command.
-  run_in_target ${chroot_dir} rpm -vv --rebuilddb
+  run_in_target ${chroot_dir} rpm --rebuilddb
 
   # # yum clean packages
   # > Loaded plugins: product-id, subscription-manager
@@ -486,13 +486,13 @@ function config_sshd_config() {
 
   egrep -q -w "^${keyword}" ${sshd_config_path} && {
     # enabled
-    sed -i "s/^${keyword}.*/${keyword} ${value}/"  ${sshd_config_path}
+    sed -i "s,^${keyword}.*,${keyword} ${value},"  ${sshd_config_path}
   } || {
     # commented parameter is "^#keyword value".
     # therefore this case should *not* be included white spaces between # and keyword.
     egrep -q -w "^#${keyword}" ${sshd_config_path} && {
       # disabled
-      sed -i "s/^#${keyword}.*/${keyword} ${value}/" ${sshd_config_path}
+      sed -i "s,^#${keyword}.*,${keyword} ${value}," ${sshd_config_path}
     } || {
       # no match
       echo "${keyword} ${value}" >> ${sshd_config_path}
