@@ -10,10 +10,14 @@
 #  distro: load_distro_driver
 #
 
-function add_option_distro_centos5() {
-  load_distro_driver rhel5
+function add_option_distro_centos7() {
+  load_distro_driver rhel7
   load_distro_driver centos
 
+  case ${distro_ver} in
+  7.0) distro_ver=7.0.1406 ;;
+  esac
+
   baseurl=${baseurl:-http://vault.centos.org/${distro_ver}/os/${basearch}}
-  gpgkey=${gpgkey:-${baseurl}/RPM-GPG-KEY-CentOS-5}
+  gpgkey=${gpgkey:-${baseurl}/RPM-GPG-KEY-CentOS-7}
 }
