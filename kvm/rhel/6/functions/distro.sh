@@ -52,7 +52,7 @@ function add_option_distro() {
   rhel4|centos4)
     load_distro_driver ${driver_name}
     ;;
-  fedora[7-9]|fedora1[0-7])
+  fedora[7-9]|fedora1[0-9]|fedora20)
     load_distro_driver ${driver_name}
     ;;
   *)
@@ -623,9 +623,12 @@ function prevent_udev_starting() {
   local chroot_dir=$1
   [[ -d "${chroot_dir}" ]] || { echo "[ERROR] directory not found: ${chroot_dir} (${BASH_SOURCE[0]##*/}:${LINENO})" >&2; return 1; }
 
-  sed -i 's,/sbin/start_udev,#\0,' \
-    ${chroot_dir}/etc/rc.sysinit   \
-    ${chroot_dir}/etc/rc.d/rc.sysinit
+  # rhel6 does not have /etc/rc.sysinit and /etc/rc.d/rc.sysinit.
+  local i=
+  for i in ${chroot_dir}/etc/rc.sysinit ${chroot_dir}/etc/rc.d/rc.sysinit; do
+    [[ -f ${i} ]] || continue
+    sed -i 's,/sbin/start_udev,#\0,' ${i}
+  done
 }
 
 function prevent_plymouth_starting() {
@@ -1094,7 +1097,10 @@ function install_bootloader() {
     grub_cmd="grub2-bios-setup --boot-image=i386-pc/boot.img --core-image=i386-pc/core.img ${target_device}"
 
     install_grub2 ${chroot_dir}
-    run_in_target ${chroot_dir} grub2-install ${target_device}
+    # > grub2-install: error: /usr/lib/grub/x86_64-efi/modinfo.sh doesn't exist. Please specify --target or --directory.
+    # if not --target=i386-pc used, an efi based host gets an above error.
+    # --target=i386-pc uses not efi but bios.
+    run_in_target ${chroot_dir} grub2-install ${target_device} --target=i386-pc
     # => Installation finished. No error reported.
     ;;
   esac
